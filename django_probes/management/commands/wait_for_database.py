@@ -4,7 +4,7 @@ FILE: django_probes/management/commands/wait_for_database.py
 from time import sleep, time
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connections, DEFAULT_DB_ALIAS
-from django.db.utils import OperationalError
+from django.db.utils import OperationalError, Error
 
 try:
     TimeoutError
@@ -30,18 +30,19 @@ def wait_for_database(**opts):
         # loop until we have a database connection or we run into a timeout
         while True:
             try:
-                connection.cursor().execute('SELECT 1')
-                if not conn_alive_start:
-                    conn_alive_start = time()
-                break
-            except OperationalError as err:
-                conn_alive_start = None
+                if connection.is_usable():
+                    if not conn_alive_start:
+                        conn_alive_start = time()
+                    break
+                else:
+                    conn_alive_start = None
 
-                elapsed_time = int(time() - start)
-                if elapsed_time >= timeout_seconds:
-                    raise TimeoutError(
-                        'Could not establish database connection.')
-
+                    elapsed_time = int(time() - start)
+                    if elapsed_time >= timeout_seconds:
+                        raise TimeoutError(
+                            'Could not establish database connection.')
+                    sleep(wait_for_db_seconds)
+            except Error as err:
                 err_message = str(err).strip()
                 print('Waiting for database (cause: {msg}) ... {elapsed}s'.
                       format(msg=err_message, elapsed=elapsed_time))
